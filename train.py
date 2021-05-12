@@ -50,8 +50,8 @@ torch.backends.cudnn.deterministic = True
 def train_per_epoch(model, criterion, optimizer, dataloader, device):
     model.train()
 
-    for data in tqdm(dataloader):
-        image , target = data['image'].to(device, dtype=torch.float), data['label'].to(device)
+    for _, (image, target) in tqdm(enumerate(dataloader)):
+        image , target = image.to(device, dtype=torch.float), target.to(device)
         output = model(image)
         loss = criterion(output, target)
         
@@ -72,11 +72,11 @@ def validate_model(model, criterion, valid_loader, device):
     model.eval()
 
     ious = []
-    for data in enumerate(valid_loader):
+    for _,(image, target) in enumerate(valid_loader):
         
         # 2.1. Get images and groundtruths (i.e. a batch), then send them to 
         # the device every iteration
-        image , target = data['image'].to(device, dtype=torch.float), data['label'].to(device)
+        image , target = image.to(device, dtype=torch.float), target.to(device)
         output = model(image)
         print(output.shape)
 
