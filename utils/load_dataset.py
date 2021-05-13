@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import cv2
-
+import torch
 
 import torchvision.transforms as T
 
@@ -39,9 +39,10 @@ class BaseDataset(Dataset):
         if not self.trans_func is None:
             img = self.trans_func(img)
             gt = self.trans_func(gt)
-        print(np.unique(gt))
         img = self.toTensor(img)
-        gt = self.toTensor(gt)
+        # gt = self.toTensor(gt)
+        gt = np.asarray(gt)
+        gt = torch.from_numpy(gt.astype(np.int64).copy()).clone()
         return img.detach(), gt.unsqueeze(0).detach()
     
     

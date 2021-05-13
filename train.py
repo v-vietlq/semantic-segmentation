@@ -49,7 +49,7 @@ torch.backends.cudnn.deterministic = True
     
 def train_per_epoch(model, criterion, optimizer, dataloader, device):
     model.train()
-
+    model.to(device)
     for _, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         output = model(image)

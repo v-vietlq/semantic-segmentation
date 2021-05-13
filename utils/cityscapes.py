@@ -3,6 +3,7 @@ from numpy.lib.arraysetops import ediff1d
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
+from torchvision import transforms
 from utils.load_dataset import BaseDataset
 import utils.augment  as T
 import torch.distributed as dist
