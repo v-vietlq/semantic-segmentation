@@ -40,7 +40,6 @@ class BaseDataset(Dataset):
             img = self.trans_func(img)
             gt = self.trans_func(gt)
         img = self.toTensor(img)
-        # gt = self.toTensor(gt)
         gt = np.asarray(gt)
         gt = torch.from_numpy(gt.astype(np.int64).copy()).clone()
         return img.detach(), gt.unsqueeze(0).detach()

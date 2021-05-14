@@ -12,6 +12,7 @@ from utils.evaluate import eval_model
 import segmentation_models_pytorch as smp
 from segmentation_models_pytorch.utils.metrics import IoU, Fscore, Recall, Precision, Accuracy
 from segmentation_models_pytorch.utils.meter import AverageValueMeter
+from utils.metrics import Evaluator
 
 torch.manual_seed(123)
 torch.cuda.manual_seed(123)
@@ -52,31 +53,27 @@ def train_per_epoch(model, criterion, optimizer, dataloader, device):
     model.to(device)
     for _, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
+        target = torch.squeeze(target, 1)
         output = model(image)
         loss = criterion(output, target)
         
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
-        seg_map = torch.argmax(output, dim=1)
-        seg_map = seg_map.cpu().detach().numpy()
-        target = target.cpu().detach().numpy()
- 
-    m_ious1= eval_model(models, 4, './datasets/cityscapes', './datasets/cityscapes/val.txt')
-    
-    return m_ious1
+    return 
 
+@torch.no_grad()
 def validate_model(model, criterion, valid_loader, device):
 
     model.eval()
-
+    evaluator = Evaluator(19)
     ious = []
     for _,(image, target) in enumerate(valid_loader):
         
         # 2.1. Get images and groundtruths (i.e. a batch), then send them to 
         # the device every iteration
         image , target = image.to(device, dtype=torch.float), target.to(device)
+        target = torch.squeeze(target, 1)
         output = model(image)
         print(output.shape)
 
@@ -87,7 +84,10 @@ def validate_model(model, criterion, valid_loader, device):
         seg_map = torch.argmax(output, dim=1)
         seg_map = seg_map.cpu().detach().numpy()
         target      = target.cpu().detach().numpy()
-        iou = IoU(output, target)
-        ious.append(iou)
+        evaluator.add_batch(target,seg_map)
+        Acc = evaluator.Pixel_Accuracy()
+        Acc_class = evaluator.Pixel_Accuracy_Class()
+        mIoU = evaluator.Mean_Intersection_over_Union()
+        FWIoU = evaluator.Frequency_Weighted_Intersection_over_Union()
                 
-    return np.mean(ious)
+    return Acc, Acc_class, mIoU, FWIoU
