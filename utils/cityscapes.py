@@ -1,12 +1,8 @@
-import os
-from numpy.lib.arraysetops import ediff1d
-import torch
+
 from torch.utils.data import DataLoader
 import numpy as np
-from torchvision import transforms
 from utils.load_dataset import BaseDataset
-import utils.augment  as T
-import torch.distributed as dist
+
 
 
 labels_info = [
@@ -55,13 +51,9 @@ class CityScapes(BaseDataset):
         self.lb_map=np.arange(256).astype(np.uint8)
         for el in labels_info:
             self.lb_map[el['id']] = el['trainId']
-        # self.toTensor = T.ToTensor(
-        #     mean=(0.3257, 0.3690, 0.3223), # city, rgb
-        #     std=(0.2112, 0.2148, 0.2115),
-        # )
         
 
-def get_data_loader(datapth, annpath,trans_func=None ,ims_per_gpu = 4, mode='train'):
+def get_data_loader(datapth, annpath,trans_func=None ,batch_size = 4, mode='train'):
     if mode=='train':
         shuffle = True
         drop_last = True
@@ -72,7 +64,7 @@ def get_data_loader(datapth, annpath,trans_func=None ,ims_per_gpu = 4, mode='tra
     ds = CityScapes(datapth, annpath,trans_func=trans_func,mode=mode)
     dl = DataLoader(
         ds, 
-        batch_size= ims_per_gpu, 
+        batch_size= batch_size, 
         shuffle= shuffle, 
         drop_last= drop_last,
         num_workers= 4 , 

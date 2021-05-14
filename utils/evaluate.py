@@ -37,12 +37,12 @@ class MscEvalV0(object):
                 sH, sW = int(scale* H), int (scale *W)
                 im_sc = F.interpolate(imgs, size=(sH, sW), mode='bilinear', align_corners=True)
                 im_sc = im_sc.cuda()
-                logits = net(im_sc)[0]
+                logits = net(im_sc)
                 logits = F.interpolate(logits, size=size, mode='bilinear', align_corners=True)
                 probs += torch.softmax(logits, dim=1)
                 if self.flip:
                     im_sc = torch.flip(im_sc, dims=(3, ))
-                    logits = net(im_sc)[0]
+                    logits = net(im_sc)
                     logits = torch.flip(im_sc, dim=(3,))
                     logits = F.interpolate(logits, size=size, mode='bilinear', align_corners=True)
                     probs += torch.softmax(logits, dim=1)
@@ -57,8 +57,7 @@ class MscEvalV0(object):
         return miou.item()
                 
 @torch.no_grad()
-def eval_model(net, ims_per_gpu, im_root, im_anns):
-    dl = get_data_loader(im_root, im_anns, ims_per_gpu, mode='val')
+def eval_model(net,dl):
     net.eval()
     m_ious = []
     single_scale = MscEvalV0((1.,), False)

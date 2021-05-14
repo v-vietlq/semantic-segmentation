@@ -112,5 +112,5 @@ res/
 adj.md
 tensorrt/build/*
 
-dataset
+datasets/cityscapes
 

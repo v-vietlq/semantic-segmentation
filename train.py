@@ -8,10 +8,6 @@ from utils.cityscapes import get_data_loader
 from utils.meters import TimeMeter, AvgMeter
 from utils.loss import OhemCELoss
 from tqdm import tqdm
-from utils.evaluate import eval_model
-import segmentation_models_pytorch as smp
-from segmentation_models_pytorch.utils.metrics import IoU, Fscore, Recall, Precision, Accuracy
-from segmentation_models_pytorch.utils.meter import AverageValueMeter
 from utils.metrics import Evaluator
 
 torch.manual_seed(123)
@@ -28,24 +24,6 @@ torch.backends.cudnn.deterministic = True
 # args = parse_args()
 # cfg = cfg_factory[args.model]
 
-
-# def set_meters():
-#     time_meter = TimeMeter(cfg.max_iter)
-#     loss_meter = AvgMeter('loss')
-#     loss_pre_meter = AvgMeter('loss_prem')
-#     loss_aux_meters = [AvgMeter('Loss_aux{}'.format(i) for i in range(cfg.num_aux_heads))]
-    
-#     return time_meter, loss_meter, loss_pre_meter, loss_aux_meters
-
-# def set_model():
-#     net =model_factory[cfg.model_type](19)
-#     if not args.finetune_from is None:
-#         net.load_state_dict(torch.load(args.finetune_from, map_location='cpu'))
-#     net.cuda()
-#     net.train()
-#     criteria_pre = OhemCELoss(0.7)
-#     criteria_aux= [OhemCELoss(0.7) for _ in range(cfg.num_aux_heads)]
-#     return net, criteria_pre, criteria_aux
 
     
 def train_per_epoch(model, criterion, optimizer, dataloader, device):
@@ -75,7 +53,6 @@ def validate_model(model, criterion, valid_loader, device):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
         output = model(image)
-        print(output.shape)
 
         # 2.2. Perform a feed-forward pass
            
