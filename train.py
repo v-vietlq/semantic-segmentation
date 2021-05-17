@@ -45,7 +45,6 @@ def validate_model(model, criterion, valid_loader, device):
 
     model.eval()
     evaluator = Evaluator(19)
-    ious = []
     for _,(image, target) in enumerate(valid_loader):
         
         # 2.1. Get images and groundtruths (i.e. a batch), then send them to 

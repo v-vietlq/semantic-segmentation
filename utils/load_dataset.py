@@ -1,4 +1,5 @@
 import os
+from PIL import Image
 import numpy as np
 import cv2
 import torch
@@ -28,21 +29,23 @@ class BaseDataset(Dataset):
         return len(self.img_paths)
     
     def __getitem__(self, idx: int):
+        
         imgpth, lbpth = self.img_paths[idx], self.lb_paths[idx]
         
-        img, gt = cv2.imread(imgpth)[:, :, ::-1], cv2.imread(lbpth, 0)
+        img = Image.open(imgpth).convert('RGB')
+        gt = Image.open(lbpth).convert('RGB')
         # print(img)
         
         if not self.lb_map is None:
+            gt = np.asarray(gt)
             gt = self.lb_map[gt]
+            gt = Image.fromarray(gt)
             
+
         if not self.trans_func is None:
-            img = self.trans_func(img)
-            gt = self.trans_func(gt)
+            img, gt = self.trans_func(img, gt)
         img = self.toTensor(img)
-        gt = np.asarray(gt)
-        gt = torch.from_numpy(gt.astype(np.int64).copy()).clone()
-        return img.detach(), gt.unsqueeze(0).detach()
+        return img.detach(),  np.array(gt).astype('int64')
     
     
 
