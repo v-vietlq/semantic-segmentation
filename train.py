@@ -10,38 +10,34 @@ from utils.loss import OhemCELoss
 from tqdm import tqdm
 from utils.metrics import Evaluator
 
-torch.manual_seed(123)
-torch.cuda.manual_seed(123)
-np.random.seed(123)
-random.seed(123)
-torch.backends.cudnn.deterministic = True
-
-
-# def parse_args():
-#     parse = argparse.ArgumentParser()
-#     parse.add_argument('--model', dest='model', type=str, default='bisenetv1')
-    
-# args = parse_args()
-# cfg = cfg_factory[args.model]
+from utils.metrics import Evaluator
+from utils.cityscapes import get_data_loader
+from utils.evaluate import eval_model
+import torch
+from models.bisenetv2 import BiSeNetV2
+import numpy as np
 
 
     
 def train_per_epoch(model, criterion, optimizer, dataloader, device):
     model.train()
     model.to(device)
+    criteria_pre = OhemCELoss(0.7)
+    criteria_aux = [OhemCELoss(0.7) for _ in range(4)]
     for _, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
-        output = model(image)
-        loss = criterion(output, target)
-        
+        logits, *logits_aux = model(image)
+        loss_pre = criteria_pre(logits, target)
+        loss_aux = [crit(lgt, target) for crit, lgt in zip(criteria_aux, logits_aux)]
+        loss = loss_pre + sum(loss_aux)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
     return 
 
 @torch.no_grad()
-def validate_model(model, criterion, valid_loader, device):
+def validate_model(model, valid_loader, device):
 
     model.eval()
     evaluator = Evaluator(19)
@@ -51,12 +47,11 @@ def validate_model(model, criterion, valid_loader, device):
         # the device every iteration
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
-        output = model(image)
+        output = model(image)[0]
 
         # 2.2. Perform a feed-forward pass
            
         # 2.3. Compute the batch loss
-        loss = criterion(output, target)
         seg_map = torch.argmax(output, dim=1)
         seg_map = seg_map.cpu().detach().numpy()
         target      = target.cpu().detach().numpy()
@@ -67,4 +62,88 @@ def validate_model(model, criterion, valid_loader, device):
         FWIoU = evaluator.Frequency_Weighted_Intersection_over_Union()
                 
     return Acc, Acc_class, mIoU, FWIoU
+
+
+
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
+np.random.seed(50)
+torch.manual_seed(50)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(50)
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+def get_check_point(pretrained_pth, net, device):
+    checkpoint = torch.load(pretrained_pth,map_location=device)
+    multigpus = True
+    for key in checkpoint:  # check if the model was trained in multiple gpus",
+        if 'module' in key:
+            multigpus = multigpus and True
+        else:
+            multigpus = False
+    if multigpus:
+        net = torch.nn.DataParallel(net)
+    net.load_state_dict(checkpoint)
+    net.to(device)
+    net.eval()
+    return net
+
+
+if __name__== "__main__":
+    from tqdm import tqdm
+    import torchvision.transforms as T
+    from PIL import Image
+    
+    
+    train_transform = T.Compose([
+        T.ToPILImage(),
+        T.RandomResizedCrop((512,1024),scale=(0.25, 2.)),
+        T.RandomHorizontalFlip(),
+        T.ColorJitter(
+            brightness=0.4,
+            contrast=0.4,
+            saturation=0.4
+        ),
+    ])
+    
+    val_transform = T.Compose([
+        T.ToPILImage(),
+        T.Resize((512,1024), interpolation=Image.NEAREST)
+    ])
+    num_epochs = 50
+    max_acc = 0
+    patience = 10
+    not_improved_count = 0
+    batch_size = 4
+    
+    val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',trans_func=val_transform,batch_size=4,mode='val')
+    train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',trans_func=train_transform,batch_size=batch_size,mode='train')
+    
+    net = BiSeNetV2(n_classes= 19)
+    net = get_check_point('model_final_v2.pth', net, device)
+    
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+    optimizer = torch.optim.Adam(net.parameters(),5e-4,(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
+
+    for epoch in range(num_epochs):
+        train_per_epoch(net, criterion, optimizer, train_loader, device)
+        val_iou= eval_model(net, val_loader)
+
+        print('Epoch: {}'.format(epoch))
+        print('Valid_iou: {:.4f}'.format(val_iou))
+
+        if val_iou > max_acc:
+            torch.save(net.state_dict(), './pretrained_model/Bisenetv2_epoch_' + str(epoch) + '_acc_{0:.4f}'.format(val_iou)+'.pt')
+            max_acc = val_iou
+            not_improved_count = 0
+        else:
+            not_improved_count+=1
+        
+        if not_improved_count >=patience:
+            break
+
+    
+
 

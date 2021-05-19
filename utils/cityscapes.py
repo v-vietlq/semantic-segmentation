@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 import numpy as np
-from load_dataset import BaseDataset
+from utils.load_dataset import BaseDataset
 
 
 
@@ -91,9 +91,9 @@ if __name__ == '__main__':
         T.ToPILImage(),
         T.Resize((512,1024), interpolation=Image.NEAREST)
     ])
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',trans_func=train_transform,batch_size=4,mode='train')
+    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',trans_func=val_transform,batch_size=4,mode='val')
     
-    img , gt = dl.dataset.__getitem__(0)
+    img , gt = dl.dataset.__getitem__(3)
     
     print(img.shape, gt.shape)
     print(np.unique(gt))

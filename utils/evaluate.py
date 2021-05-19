@@ -5,8 +5,7 @@ import random
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from utils.cityscapes import get_data_loader
-from segmentation_models_pytorch.utils.metrics import IoU, Fscore, Recall, Precision, Accuracy
+
 
 torch.manual_seed(123)
 torch.cuda.manual_seed(123)
@@ -37,12 +36,12 @@ class MscEvalV0(object):
                 sH, sW = int(scale* H), int (scale *W)
                 im_sc = F.interpolate(imgs, size=(sH, sW), mode='bilinear', align_corners=True)
                 im_sc = im_sc.cuda()
-                logits = net(im_sc)
+                logits = net(im_sc)[0]
                 logits = F.interpolate(logits, size=size, mode='bilinear', align_corners=True)
                 probs += torch.softmax(logits, dim=1)
                 if self.flip:
                     im_sc = torch.flip(im_sc, dims=(3, ))
-                    logits = net(im_sc)
+                    logits = net(im_sc)[0]
                     logits = torch.flip(im_sc, dim=(3,))
                     logits = F.interpolate(logits, size=size, mode='bilinear', align_corners=True)
                     probs += torch.softmax(logits, dim=1)

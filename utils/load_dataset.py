@@ -33,18 +33,18 @@ class BaseDataset(Dataset):
         imgpth, lbpth = self.img_paths[idx], self.lb_paths[idx]
         
         img = cv2.imread(imgpth)[:,:,::-1]
-        gt = Image.open(lbpth, 0 )
-        # print(img)
+        gt = cv2.imread(lbpth, 0 )
+        
         
         if not self.lb_map is None:
-            gt = np.asarray(gt)
             gt = self.lb_map[gt]
-            
 
         if not self.trans_func is None:
             img = self.trans_func(img)
             gt = self.trans_func(gt)
+        
         img = self.toTensor(img)
+        gt = np.array(gt)
         gt = torch.from_numpy(gt.astype(np.int64).copy()).clone()
         return img.detach(),  gt.unsqueeze(0).detach()
     
