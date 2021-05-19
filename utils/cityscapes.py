@@ -1,7 +1,6 @@
-
 from torch.utils.data import DataLoader
 import numpy as np
-from utils.load_dataset import BaseDataset
+from load_dataset import BaseDataset
 
 
 
@@ -71,4 +70,31 @@ def get_data_loader(datapth, annpath,trans_func=None ,batch_size = 4, mode='trai
         pin_memory=True)
     
     return dl
+    
+    
+if __name__ == '__main__':
+    from tqdm import tqdm
+    from torch.utils.data import DataLoader
+    import torchvision.transforms as T
+    from PIL import Image
+    train_transform = T.Compose([
+        T.ToPILImage(),
+        T.RandomResizedCrop((512,1024),scale=(0.25, 2.)),
+        T.RandomHorizontalFlip(),
+        T.ColorJitter(
+            brightness=0.4,
+            contrast=0.4,
+            saturation=0.4
+        ),
+    ])
+    val_transform = T.Compose([
+        T.ToPILImage(),
+        T.Resize((512,1024), interpolation=Image.NEAREST)
+    ])
+    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',trans_func=train_transform,batch_size=4,mode='train')
+    
+    img , gt = dl.dataset.__getitem__(0)
+    
+    print(img.shape, gt.shape)
+    print(np.unique(gt))
     

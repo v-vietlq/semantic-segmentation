@@ -67,3 +67,4 @@ def validate_model(model, criterion, valid_loader, device):
         FWIoU = evaluator.Frequency_Weighted_Intersection_over_Union()
                 
     return Acc, Acc_class, mIoU, FWIoU
+
