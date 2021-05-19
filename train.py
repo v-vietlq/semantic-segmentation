@@ -19,11 +19,11 @@ import numpy as np
 
 
     
-def train_per_epoch(model, criterion, optimizer, dataloader, device):
+def train_per_epoch(model, optimizer, dataloader, device):
     model.train()
     model.to(device)
-    criteria_pre = OhemCELoss(0.7)
-    criteria_aux = [OhemCELoss(0.7) for _ in range(4)]
+    criteria_pre = OhemCELoss(thresh=0.7)
+    criteria_aux = [OhemCELoss(thresh=0.7) for _ in range(4)]
     for _, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
@@ -75,6 +75,7 @@ if torch.cuda.is_available():
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+
 def get_check_point(pretrained_pth, net, device):
     checkpoint = torch.load(pretrained_pth,map_location=device)
     multigpus = True
@@ -122,20 +123,20 @@ if __name__== "__main__":
     train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',trans_func=train_transform,batch_size=batch_size,mode='train')
     
     net = BiSeNetV2(n_classes= 19)
-    net = get_check_point('model_final_v2.pth', net, device)
+    # net = get_check_point('model_final_v2.pth', net, device)
     
     criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
     optimizer = torch.optim.Adam(net.parameters(),5e-4,(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
 
     for epoch in range(num_epochs):
-        train_per_epoch(net, criterion, optimizer, train_loader, device)
+        train_per_epoch(net, optimizer, train_loader, device)
         val_iou= eval_model(net, val_loader)
 
         print('Epoch: {}'.format(epoch))
         print('Valid_iou: {:.4f}'.format(val_iou))
 
         if val_iou > max_acc:
-            torch.save(net.state_dict(), './pretrained_model/Bisenetv2_epoch_' + str(epoch) + '_acc_{0:.4f}'.format(val_iou)+'.pt')
+            torch.save(net.state_dict(), './pretrained_model/BiSeNetv2_epoch_' + str(epoch) + '_acc_{0:.4f}'.format(val_iou)+'.pt')
             max_acc = val_iou
             not_improved_count = 0
         else:

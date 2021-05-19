@@ -39,7 +39,7 @@ if __name__== "__main__":
     from PIL import Image
     val_transform = T.Compose([
         T.ToPILImage(),
-        T.Resize((512,1024), interpolation=Image.NEAREST)
+        T.Resize((1024,2048), interpolation=Image.NEAREST)
     ])
     dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',trans_func=val_transform,batch_size=4,mode='val')
     model = BiSeNetV2(n_classes= 19)
