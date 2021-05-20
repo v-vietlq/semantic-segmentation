@@ -4,6 +4,10 @@ import numpy as np
 
 from PIL import Image, ImageOps, ImageFilter
 
+import torchvision.transforms as transforms
+from torchvision.transforms import functional as F
+from torchvision.transforms.functional import InterpolationMode
+
 class Normalize(object):
     """Normalize a tensor image with mean and standard deviation.
     Args:
@@ -148,9 +152,9 @@ class FixScaleCrop(object):
         return {'image': img,
                 'label': mask}
 
-class FixedResize(object):
+class FixedResize(transforms.Resize):
     def __init__(self, size):
-        self.size = (size, size)  # size: (h, w)
+        super().__init__(size, interpolation=InterpolationMode.BILINEAR)
 
     def __call__(self, sample):
         img = sample['image']
@@ -158,8 +162,41 @@ class FixedResize(object):
 
         assert img.size == mask.size
 
-        img = img.resize(self.size, Image.BILINEAR)
-        mask = mask.resize(self.size, Image.NEAREST)
+        img = F.resize(img, self.size, self.interpolation)
+        mask = F.resize(mask, self.size, InterpolationMode.NEAREST)
 
         return {'image': img,
                 'label': mask}
+        
+
+class RandomResizedCrop(transforms.RandomResizedCrop):
+
+    def __init__(self,
+                 size,
+                 scale=(0.08, 1.0),
+                 ratio=(3. / 4., 4. / 3.),
+                 interpolation=InterpolationMode.BILINEAR):
+        super().__init__(size, scale, ratio, interpolation)
+        
+        self.interpolation = interpolation
+        self.randomize_parameters()
+
+    def __call__(self, sample):
+        
+        img = sample['image']
+        mask = sample['label']
+
+        if self.randomize:
+            self.random_crop = self.get_params(img, self.scale, self.ratio)
+            self.randomize = False
+
+        i, j, h, w = self.random_crop
+        img = F.resized_crop(img, i, j, h, w, self.size, self.interpolation)
+
+        mask = F.resized_crop(mask, i, j, h, w, self.size, InterpolationMode.NEAREST)
+        
+        return {'image': img,
+        'label': mask}
+
+    def randomize_parameters(self):
+        self.randomize = True

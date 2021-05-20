@@ -130,12 +130,12 @@ if __name__== "__main__":
     scheduler = ExponentialLR(optimizer, gamma=0.9)
     
     
-    net, optimizer, scheduler, current_epoch, current_miou = get_check_point(
-        './pretrained_models/BiSeNetv2_epoch_28_acc_0.4767.pt',
-        net,
-        optimizer, 
-        device
-        )
+    # net, optimizer, scheduler, current_epoch, current_miou = get_check_point(
+    #     'model_final_v2.pth',
+    #     net,
+    #     optimizer, 
+    #     device
+    #     )
     
     
 

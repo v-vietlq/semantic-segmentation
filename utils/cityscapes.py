@@ -1,5 +1,8 @@
 from torch.utils.data import DataLoader, dataset
 import numpy as np
+from torchvision.models.detection import transform
+from torchvision.transforms.functional import scale
+from torchvision.transforms.transforms import RandomResizedCrop
 from utils.load_dataset import BaseDataset
 import torchvision.transforms as transforms
 import utils.augment as T
@@ -56,7 +59,7 @@ class CityScapes(BaseDataset):
 def transform_train():
     composed_transforms = transforms.Compose([
         T.RandomHorizontalFlip(),
-        T.RandomScaleCrop(1024, 512, fill=255),
+        T.RandomResizedCrop((512,1024), scale=(0.25, 2.)),
         T.RandomGaussianBlur(),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
@@ -68,7 +71,7 @@ def transform_train():
 
 def transform_val():
     compose_transforms = transforms.Compose([
-        T.FixScaleCrop(1024),
+        T.FixedResize((512,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -79,7 +82,7 @@ def transform_val():
     
 def transform_test():
     compose_transforms = transforms.Compose([
-        T.FixedResize((1024,1024)),
+        T.FixedResize((512,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
