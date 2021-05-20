@@ -1,7 +1,8 @@
 from torch.utils.data import DataLoader
 import numpy as np
-from utils.load_dataset import BaseDataset
-
+from load_dataset import BaseDataset
+import torchvision.transforms as transforms
+import augment as T
 
 
 labels_info = [
@@ -50,50 +51,76 @@ class CityScapes(BaseDataset):
         self.lb_map=np.arange(256).astype(np.uint8)
         for el in labels_info:
             self.lb_map[el['id']] = el['trainId']
+            
+def transform_train():
+    composed_transforms = transforms.Compose([
+        T.RandomHorizontalFlip(),
+        T.RandomScaleCrop(1024, 512, fill=255),
+        T.RandomGaussianBlur(),
+        T.Normalize(
+            mean=(0.485, 0.456, 0.406), 
+            std=(0.229, 0.224, 0.225)
+        ),
+        T.ToTensor()
+    ])
+    return composed_transforms
+
+def transform_val():
+    compose_transforms = transforms.Compose([
+        T.FixScaleCrop(1024),
+        T.Normalize(
+            mean=(0.485, 0.456, 0.406), 
+            std=(0.229, 0.224, 0.225)
+            ),
+        T.ToTensor()
+    ])
+    return compose_transforms
+    
+def transform_test():
+    compose_transforms = transforms.Compose([
+        T.FixedResize((512,1024)),
+        T.Normalize(
+            mean=(0.485, 0.456, 0.406), 
+            std=(0.229, 0.224, 0.225)
+            ),
+        T.ToTensor()
+    ])
+    return compose_transforms
         
 
-def get_data_loader(datapth, annpath,trans_func=None ,batch_size = 4, mode='train'):
+def get_data_loader(datapth, annpath,batch_size = 4, mode='train'):
     if mode=='train':
+        trans_func = transform_train()
         shuffle = True
         drop_last = True
     elif mode =='val':
+        trans_func = transform_val()
+        shuffle = False
+        drop_last = False
+    else:
+        trans_func = transform_test()
         shuffle = False
         drop_last = False
         
+        
     ds = CityScapes(datapth, annpath,trans_func=trans_func,mode=mode)
+    
     dl = DataLoader(
         ds, 
         batch_size= batch_size, 
         shuffle= shuffle, 
         drop_last= drop_last,
-        num_workers= 4 , 
+        num_workers= 4, 
         pin_memory=True)
     
     return dl
     
     
 if __name__ == '__main__':
-    from tqdm import tqdm
-    from torch.utils.data import DataLoader
-    import torchvision.transforms as T
-    from PIL import Image
-    train_transform = T.Compose([
-        T.ToPILImage(),
-        T.RandomResizedCrop((512,1024),scale=(0.25, 2.)),
-        T.RandomHorizontalFlip(),
-        T.ColorJitter(
-            brightness=0.4,
-            contrast=0.4,
-            saturation=0.4
-        ),
-    ])
-    val_transform = T.Compose([
-        T.ToPILImage(),
-        T.Resize((512,1024), interpolation=Image.NEAREST)
-    ])
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',trans_func=val_transform,batch_size=4,mode='val')
+
+    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=4,mode='val')
     
-    img , gt = dl.dataset.__getitem__(3)
+    img , gt = dl.dataset.__getitem__(14)
     
     print(img.shape, gt.shape)
     print(np.unique(gt))

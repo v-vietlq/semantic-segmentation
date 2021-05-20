@@ -16,14 +16,14 @@ from utils.evaluate import eval_model
 import torch
 from models.bisenetv2 import BiSeNetV2
 import numpy as np
+import torch.distributed as dist
 
 
     
-def train_per_epoch(model, optimizer, dataloader, device):
+def train_per_epoch(model,optimizer, dataloader, device):
     model.train()
-    model.to(device)
-    criteria_pre = OhemCELoss(thresh=0.7)
-    criteria_aux = [OhemCELoss(thresh=0.7) for _ in range(4)]
+    criteria_pre = OhemCELoss(0.7)
+    criteria_aux = [OhemCELoss(0.7) for _ in range(4)]
     for _, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
@@ -65,30 +65,20 @@ def validate_model(model, valid_loader, device):
 
 
 
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark = True
-np.random.seed(50)
-torch.manual_seed(50)
-
-if torch.cuda.is_available():
-    torch.cuda.manual_seed(50)
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
 def get_check_point(pretrained_pth, net, device):
-    checkpoint = torch.load(pretrained_pth,map_location=device)
-    multigpus = True
-    for key in checkpoint:  # check if the model was trained in multiple gpus",
-        if 'module' in key:
-            multigpus = multigpus and True
-        else:
-            multigpus = False
-    if multigpus:
-        net = torch.nn.DataParallel(net)
+    checkpoint = torch.load(pretrained_pth, map_location=device)
     net.load_state_dict(checkpoint)
     net.to(device)
-    net.eval()
+
+    is_dist = dist.is_initialized()
+    if is_dist:
+        local_rank = dist.get_rank()
+        net = nn.parallel.DistributedDataParallel(
+            net,
+            device_ids=[local_rank, ],
+            output_device=local_rank
+        )
     return net
 
 
@@ -96,17 +86,29 @@ if __name__== "__main__":
     from tqdm import tqdm
     import torchvision.transforms as T
     from PIL import Image
+    import torch
+    
+    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.benchmark = True
+    np.random.seed(50)
+    torch.manual_seed(50)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(50)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
     
     
     train_transform = T.Compose([
         T.ToPILImage(),
-        T.RandomResizedCrop((512,1024),scale=(0.25, 2.)),
+        # T.RandomResizedCrop((512,1024),scale=(0.25, 2.)),
         T.RandomHorizontalFlip(),
-        T.ColorJitter(
-            brightness=0.4,
-            contrast=0.4,
-            saturation=0.4
-        ),
+        # T.ColorJitter(
+        #     brightness=0.4,
+        #     contrast=0.4,
+        #     saturation=0.4
+        # ),
     ])
     
     val_transform = T.Compose([
@@ -117,19 +119,19 @@ if __name__== "__main__":
     max_acc = 0
     patience = 10
     not_improved_count = 0
-    batch_size = 4
+    batch_size = 2
     
     val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',trans_func=val_transform,batch_size=4,mode='val')
     train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',trans_func=train_transform,batch_size=batch_size,mode='train')
     
     net = BiSeNetV2(n_classes= 19)
-    # net = get_check_point('model_final_v2.pth', net, device)
+    net = get_check_point('model_final_v2.pth', net, device)
     
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # criterion = OhemCELoss(thresh=0.7)
     optimizer = torch.optim.Adam(net.parameters(),5e-4,(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
 
     for epoch in range(num_epochs):
-        train_per_epoch(net, optimizer, train_loader, device)
+        train_per_epoch(net,optimizer, train_loader, device)
         val_iou= eval_model(net, val_loader)
 
         print('Epoch: {}'.format(epoch))

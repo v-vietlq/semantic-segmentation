@@ -4,8 +4,6 @@ import numpy as np
 import cv2
 import torch
 
-import torchvision.transforms as T
-
 from torch.utils.data import Dataset
 
 class BaseDataset(Dataset):
@@ -14,8 +12,7 @@ class BaseDataset(Dataset):
         self.mode = mode 
         assert mode in ('train', 'val', 'test')
         self.trans_func = trans_func
-        self.lb_map=None
-        self.toTensor = T.ToTensor()        
+        self.lb_map=None      
         with open(annpath, 'r') as f:
             pairs = f.read().splitlines()
         
@@ -27,26 +24,33 @@ class BaseDataset(Dataset):
             
     def __len__(self) -> int:
         return len(self.img_paths)
+               
     
     def __getitem__(self, idx: int):
         
         imgpth, lbpth = self.img_paths[idx], self.lb_paths[idx]
         
-        img = cv2.imread(imgpth)[:,:,::-1]
-        gt = cv2.imread(lbpth, 0 )
-        
+        img = Image.open(imgpth).convert('RGB')
+        gt = np.array(Image.open(lbpth), dtype= np.uint8)
         
         if not self.lb_map is None:
             gt = self.lb_map[gt]
-
-        if not self.trans_func is None:
-            img = self.trans_func(img)
-            gt = self.trans_func(gt)
+            
+        gt = Image.fromarray(gt)
         
-        img = self.toTensor(img)
-        gt = np.array(gt)
-        gt = torch.from_numpy(gt.astype(np.int64).copy()).clone()
-        return img.detach(),  gt.unsqueeze(0).detach()
+        sample = {
+            'image' : img,
+            'label' : gt
+        }
+        
+        if not self.trans_func is None:
+            sample = self.trans_func(sample)
+            
+        return sample['image'], sample['label']
+            
+            
+            
+        
     
          
         
