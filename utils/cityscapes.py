@@ -1,8 +1,7 @@
-from torch.utils.data import DataLoader, dataset
+from torch.utils.data import DataLoader
 import numpy as np
-from torchvision.models.detection import transform
-from torchvision.transforms.functional import scale
-from torchvision.transforms.transforms import RandomResizedCrop
+
+
 from utils.load_dataset import BaseDataset
 import torchvision.transforms as transforms
 import utils.augment as T
@@ -128,8 +127,8 @@ if __name__ == '__main__':
     
     
     
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=4,mode='val')
-    img , gt = dl.dataset.__getitem__(14)
+    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',batch_size=4,mode='train')
+    img , gt = dl.dataset.__getitem__(0)
     
     
     print(img.shape, gt.shape)

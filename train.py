@@ -70,7 +70,7 @@ def validate_model(model, valid_loader, device):
 
 
 
-def get_check_point(pretrained_pth, net, optimizer, device):
+def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
     checkpoint = torch.load(pretrained_pth, map_location=device)
     
     model_state_dict = checkpoint(['model_state_dict'])
@@ -81,7 +81,8 @@ def get_check_point(pretrained_pth, net, optimizer, device):
     
     max_miou = checkpoint['max_miou']
     
-    net = net.load_state_dict(model_state_dict)
+    net.load_state_dict(model_state_dict)
+    net.to(device)
     
     optimizer = optimizer.load_state_dict(optimizer_state_dict)
     
@@ -124,18 +125,20 @@ if __name__== "__main__":
     val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=batch_size,mode='val')
     train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',batch_size=batch_size,mode='train')
     
-    net = BiSeNetV2(n_classes= 19).to(device)
+    net = BiSeNetV2(n_classes= 19)
+    
     criterion = OhemCELoss(thresh=0.7)
     optimizer = torch.optim.Adam(net.parameters(),5e-2,(0.9, 0.999), eps=1e-08, weight_decay=5e-4)
     scheduler = ExponentialLR(optimizer, gamma=0.9)
     
-    
-    # net, optimizer, scheduler, current_epoch, current_miou = get_check_point(
-    #     'model_final_v2.pth',
-    #     net,
-    #     optimizer, 
-    #     device
-    #     )
+
+    net, optimizer, scheduler, current_epoch, current_miou = get_check_point(
+        'model_final_v2.pth',
+        net,
+        optimizer,
+        scheduler, 
+        device
+        )
     
     
 
