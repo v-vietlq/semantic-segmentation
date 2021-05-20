@@ -1,8 +1,9 @@
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, dataset
 import numpy as np
-from load_dataset import BaseDataset
+from utils.load_dataset import BaseDataset
 import torchvision.transforms as transforms
-import augment as T
+import utils.augment as T
+
 
 
 labels_info = [
@@ -78,7 +79,7 @@ def transform_val():
     
 def transform_test():
     compose_transforms = transforms.Compose([
-        T.FixedResize((512,1024)),
+        T.FixedResize((1024,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -118,10 +119,32 @@ def get_data_loader(datapth, annpath,batch_size = 4, mode='train'):
     
 if __name__ == '__main__':
 
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=4,mode='val')
     
+    import matplotlib.pyplot as plt    
+    from utils import decode_segmap
+    
+    
+    
+    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=4,mode='val')
     img , gt = dl.dataset.__getitem__(14)
+    
     
     print(img.shape, gt.shape)
     print(np.unique(gt))
+    
+    
+    segmap = np.array(gt).astype(np.uint8)
+    segmap = decode_segmap(segmap)
+    img_tmp = np.transpose(img, axes=[1, 2, 0]).numpy()
+    img_tmp *= (0.229, 0.224, 0.225)
+    img_tmp += (0.485, 0.456, 0.406)
+    img_tmp *= 255.0
+    img_tmp = img_tmp.astype(np.uint8)
+    fig = plt.figure()
+    plt.title('display')
+    plt.subplot(211)
+    plt.imshow(img_tmp)
+    plt.subplot(212)
+    plt.imshow(segmap)
+    fig.savefig('sample.png')
     

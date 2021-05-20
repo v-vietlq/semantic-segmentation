@@ -1,16 +1,12 @@
-import imp
 import torch 
 import torch.nn as nn
-import random
 import numpy as np
-import models
 from utils.cityscapes import get_data_loader
 from utils.meters import TimeMeter, AvgMeter
 from utils.loss import OhemCELoss
 from tqdm import tqdm
 from utils.metrics import Evaluator
 
-from utils.metrics import Evaluator
 from utils.cityscapes import get_data_loader
 from utils.evaluate import eval_model
 import torch
@@ -18,12 +14,18 @@ from models.bisenetv2 import BiSeNetV2
 import numpy as np
 import torch.distributed as dist
 
+from torch.optim.lr_scheduler import ExponentialLR
+
 
     
-def train_per_epoch(model,optimizer, dataloader, device):
+def train_per_epoch(model, criterion, optimizer, scheduler, dataloader, device):
+    
     model.train()
-    criteria_pre = OhemCELoss(0.7)
-    criteria_aux = [OhemCELoss(0.7) for _ in range(4)]
+    
+    criteria_pre = criterion
+    criteria_aux = [criterion for _ in range(4)]
+    
+    
     for _, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
@@ -34,6 +36,8 @@ def train_per_epoch(model,optimizer, dataloader, device):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+    scheduler.step()
+    
     return 
 
 @torch.no_grad()
@@ -66,10 +70,22 @@ def validate_model(model, valid_loader, device):
 
 
 
-def get_check_point(pretrained_pth, net, device):
+def get_check_point(pretrained_pth, net, optimizer, device):
     checkpoint = torch.load(pretrained_pth, map_location=device)
-    net.load_state_dict(checkpoint)
-    net.to(device)
+    
+    model_state_dict = checkpoint(['model_state_dict'])
+    
+    optimizer_state_dict = checkpoint['optimizer_state_dict']
+    
+    epoch = checkpoint['epoch']
+    
+    max_miou = checkpoint['max_miou']
+    
+    net = net.load_state_dict(model_state_dict)
+    
+    optimizer = optimizer.load_state_dict(optimizer_state_dict)
+    
+    scheduler = scheduler.load_state_dict(checkpoint['scheduler'])
 
     is_dist = dist.is_initialized()
     if is_dist:
@@ -79,7 +95,7 @@ def get_check_point(pretrained_pth, net, device):
             device_ids=[local_rank, ],
             output_device=local_rank
         )
-    return net
+    return net, optimizer, scheduler, epoch, max_miou
 
 
 if __name__== "__main__":
@@ -98,48 +114,55 @@ if __name__== "__main__":
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
-    
-    
-    train_transform = T.Compose([
-        T.ToPILImage(),
-        # T.RandomResizedCrop((512,1024),scale=(0.25, 2.)),
-        T.RandomHorizontalFlip(),
-        # T.ColorJitter(
-        #     brightness=0.4,
-        #     contrast=0.4,
-        #     saturation=0.4
-        # ),
-    ])
-    
-    val_transform = T.Compose([
-        T.ToPILImage(),
-        T.Resize((512,1024), interpolation=Image.NEAREST)
-    ])
-    num_epochs = 50
+
+    num_epochs = 200
     max_acc = 0
-    patience = 10
+    patience = 30
     not_improved_count = 0
     batch_size = 2
     
-    val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',trans_func=val_transform,batch_size=4,mode='val')
-    train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',trans_func=train_transform,batch_size=batch_size,mode='train')
+    val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=batch_size,mode='val')
+    train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',batch_size=batch_size,mode='train')
     
-    net = BiSeNetV2(n_classes= 19)
-    net = get_check_point('model_final_v2.pth', net, device)
+    net = BiSeNetV2(n_classes= 19).to(device)
+    criterion = OhemCELoss(thresh=0.7)
+    optimizer = torch.optim.Adam(net.parameters(),5e-2,(0.9, 0.999), eps=1e-08, weight_decay=5e-4)
+    scheduler = ExponentialLR(optimizer, gamma=0.9)
     
-    # criterion = OhemCELoss(thresh=0.7)
-    optimizer = torch.optim.Adam(net.parameters(),5e-4,(0.9, 0.999), eps=1e-08, weight_decay=1e-4)
+    
+    net, optimizer, scheduler, current_epoch, current_miou = get_check_point(
+        './pretrained_models/BiSeNetv2_epoch_28_acc_0.4767.pt',
+        net,
+        optimizer, 
+        device
+        )
+    
+    
 
     for epoch in range(num_epochs):
-        train_per_epoch(net,optimizer, train_loader, device)
+        train_per_epoch(net, criterion, optimizer, scheduler, train_loader, device)
         val_iou= eval_model(net, val_loader)
 
         print('Epoch: {}'.format(epoch))
         print('Valid_iou: {:.4f}'.format(val_iou))
 
         if val_iou > max_acc:
-            torch.save(net.state_dict(), './pretrained_model/BiSeNetv2_epoch_' + str(epoch) + '_acc_{0:.4f}'.format(val_iou)+'.pt')
+            
+            best_checkpoint = {
+                'epoch': epoch,
+                'model_state_dict': net.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'max_miou': val_iou,
+                'scheduler': scheduler
+            }
+            
+            path = './pretrained_models/BiSeNetv2_epoch_' + str(epoch) + '_acc_{0:.4f}'.format(val_iou)+'.pt'
+            
+            
+            torch.save(best_checkpoint, path)
+            
             max_acc = val_iou
+            
             not_improved_count = 0
         else:
             not_improved_count+=1

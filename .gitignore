@@ -114,4 +114,5 @@ tensorrt/build/*
 
 data/cityscapes
 model_final_v2.pth
+pretrained_models/
 

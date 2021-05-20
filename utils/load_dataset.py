@@ -46,7 +46,7 @@ class BaseDataset(Dataset):
         if not self.trans_func is None:
             sample = self.trans_func(sample)
             
-        return sample['image'], sample['label']
+        return sample['image'], sample['label'].long()
             
             
             

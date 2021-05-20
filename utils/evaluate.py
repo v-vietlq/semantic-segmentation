@@ -22,7 +22,7 @@ class MscEvalV0(object):
         else:
             diter = enumerate(tqdm(dl))
         for _, (imgs, label) in diter:
-            N,_, H, W = label.shape
+            N, H, W = label.shape
             label = label.squeeze(1).cuda()
             size = label.size()[-2:]  #get original size label
             probs = torch.zeros((N, n_classes, H, W), dtype= torch.float32).cuda().detach()
