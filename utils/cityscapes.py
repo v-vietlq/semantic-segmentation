@@ -1,3 +1,4 @@
+from PIL.Image import Image
 from torch.utils.data import DataLoader
 import numpy as np
 
@@ -51,9 +52,12 @@ class CityScapes(BaseDataset):
         super(CityScapes, self).__init__(dataroot, annpath, trans_func=trans_func, mode=mode)
         self.n_cat = 19
         self.lb_ignore = 255
-        self.lb_map=np.arange(256).astype(np.uint8)
-        for el in labels_info:
-            self.lb_map[el['id']] = el['trainId']
+        self.lb_map = None
+        if mode != 'test':
+            self.lb_map=np.arange(256).astype(np.uint8)
+            for el in labels_info:
+                self.lb_map[el['id']] = el['trainId']
+                
             
 def transform_train():
     composed_transforms = transforms.Compose([
@@ -70,7 +74,7 @@ def transform_train():
 
 def transform_val():
     compose_transforms = transforms.Compose([
-        T.FixedResize((512,1024)),
+        # T.FixedResize((512,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -81,7 +85,7 @@ def transform_val():
     
 def transform_test():
     compose_transforms = transforms.Compose([
-        T.FixedResize((512,1024)),
+        # T.FixedResize((512,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -127,10 +131,9 @@ if __name__ == '__main__':
     
     
     
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',batch_size=4,mode='train')
-    img , gt = dl.dataset.__getitem__(0)
-    
-    
+    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=2,mode='val')
+    img , gt = dl.dataset.__getitem__(499)
+
     print(img.shape, gt.shape)
     print(np.unique(gt))
     

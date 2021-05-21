@@ -6,7 +6,8 @@ from utils.meters import TimeMeter, AvgMeter
 from utils.loss import OhemCELoss
 from tqdm import tqdm
 from utils.metrics import Evaluator
-
+import torch.nn.functional as F
+import torchvision.transforms as T
 from utils.cityscapes import get_data_loader
 from utils.evaluate import eval_model
 import torch
@@ -37,10 +38,11 @@ def train_per_epoch(model, criterion, optimizer, scheduler, dataloader, device):
         loss.backward()
         optimizer.step()
     scheduler.step()
+    print(optimizer.param_groups[0]['lr'])
     
     return 
 
-@torch.no_grad()
+
 def validate_model(model, valid_loader, device):
 
     model.eval()
@@ -51,21 +53,27 @@ def validate_model(model, valid_loader, device):
         # the device every iteration
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
-        output = model(image)[0]
+        
+        image = T.Resize((512,1024))(image)
+        
+        with torch.no_grad():
+            output = model(image)[0]
+            
+        seg_map = F.interpolate(output, size=(1024,2048),
+                            mode='bilinear', align_corners=True)
 
-        # 2.2. Perform a feed-forward pass
            
         # 2.3. Compute the batch loss
-        seg_map = torch.argmax(output, dim=1)
+        seg_map = torch.argmax(seg_map, dim=1)
+
         seg_map = seg_map.cpu().detach().numpy()
         target      = target.cpu().detach().numpy()
         evaluator.add_batch(target,seg_map)
         Acc = evaluator.Pixel_Accuracy()
-        Acc_class = evaluator.Pixel_Accuracy_Class()
         mIoU = evaluator.Mean_Intersection_over_Union()
-        FWIoU = evaluator.Frequency_Weighted_Intersection_over_Union()
+        f1 = evaluator.F1_score()
                 
-    return Acc, Acc_class, mIoU, FWIoU
+    return f1, mIoU
 
 
 
@@ -73,7 +81,7 @@ def validate_model(model, valid_loader, device):
 def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
     checkpoint = torch.load(pretrained_pth, map_location=device)
     
-    model_state_dict = checkpoint(['model_state_dict'])
+    model_state_dict = checkpoint['model_state_dict']
     
     optimizer_state_dict = checkpoint['optimizer_state_dict']
     
@@ -86,7 +94,7 @@ def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
     
     optimizer = optimizer.load_state_dict(optimizer_state_dict)
     
-    scheduler = scheduler.load_state_dict(checkpoint['scheduler'])
+    scheduler = checkpoint['scheduler']
 
     is_dist = dist.is_initialized()
     if is_dist:
@@ -102,7 +110,6 @@ def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
 if __name__== "__main__":
     from tqdm import tqdm
     import torchvision.transforms as T
-    from PIL import Image
     import torch
     
     torch.backends.cudnn.enabled = True
@@ -125,28 +132,21 @@ if __name__== "__main__":
     val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=batch_size,mode='val')
     train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',batch_size=batch_size,mode='train')
     
-    net = BiSeNetV2(n_classes= 19)
+    net = BiSeNetV2(n_classes= 19).to(device)
     
     criterion = OhemCELoss(thresh=0.7)
-    optimizer = torch.optim.Adam(net.parameters(),5e-2,(0.9, 0.999), eps=1e-08, weight_decay=5e-4)
+    
+    optimizer = torch.optim.SGD(net.parameters(),lr = 5e-2,momentum=0.9)
     scheduler = ExponentialLR(optimizer, gamma=0.9)
-    
-
-    net, optimizer, scheduler, current_epoch, current_miou = get_check_point(
-        'model_final_v2.pth',
-        net,
-        optimizer,
-        scheduler, 
-        device
-        )
-    
     
 
     for epoch in range(num_epochs):
         train_per_epoch(net, criterion, optimizer, scheduler, train_loader, device)
-        val_iou= eval_model(net, val_loader)
+        # val_iou= eval_model(net, val_loader)
+        val_f1, val_iou = validate_model(net, val_loader, device)
 
         print('Epoch: {}'.format(epoch))
+        print('Valid_f1: {}'.format(val_f1))
         print('Valid_iou: {:.4f}'.format(val_iou))
 
         if val_iou > max_acc:

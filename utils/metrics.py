@@ -14,6 +14,15 @@ class Evaluator(object):
         Acc = np.diag(self.confusion_matrix) / self.confusion_matrix.sum(axis=1)
         Acc = np.nanmean(Acc)
         return Acc
+    
+    def F1_score(self):
+        true_positive = np.diag(self.confusion_matrix).sum()
+        false_positive = self.confusion_matrix.sum(axis= 1) - true_positive
+        false_nagative = self.confusion_matrix.sum(axis= 0) - true_positive
+        precision = true_positive / (true_positive + false_positive)
+        recall = true_positive / (true_positive + false_nagative)
+        f1 = 2* (precision * recall)/ (precision + recall)
+        return f1
 
     def Mean_Intersection_over_Union(self):
         MIoU = np.diag(self.confusion_matrix) / (
