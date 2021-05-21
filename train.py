@@ -73,7 +73,7 @@ def validate_model(model, valid_loader, device):
         mIoU = evaluator.Mean_Intersection_over_Union()
         f1 = evaluator.F1_score()
                 
-    return f1, mIoU
+    return mIoU, Acc, f1
 
 
 
@@ -92,7 +92,7 @@ def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
     net.load_state_dict(model_state_dict)
     net.to(device)
     
-    optimizer = optimizer.load_state_dict(optimizer_state_dict)
+    optimizer.load_state_dict(optimizer_state_dict)
     
     scheduler = checkpoint['scheduler']
 
@@ -111,6 +111,7 @@ if __name__== "__main__":
     from tqdm import tqdm
     import torchvision.transforms as T
     import torch
+    import matplotlib.pyplot as plt
     
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
@@ -139,17 +140,26 @@ if __name__== "__main__":
     optimizer = torch.optim.SGD(net.parameters(),lr = 5e-2,momentum=0.9)
     scheduler = ExponentialLR(optimizer, gamma=0.9)
     
+    net, optimizer, scheduler, epoch, max_miou = get_check_point(
+        './pretrained_models/BiSeNetv2_epoch_14_acc_0.3202.pt',
+        net,
+        optimizer,
+        scheduler,
+        device
+    )
+    
 
-    for epoch in range(num_epochs):
+    for epoch in range(epoch+1, num_epochs):
         train_per_epoch(net, criterion, optimizer, scheduler, train_loader, device)
         # val_iou= eval_model(net, val_loader)
-        val_f1, val_iou = validate_model(net, val_loader, device)
+        val_iou, val_f1, val_acc = validate_model(net, val_loader, device)
 
         print('Epoch: {}'.format(epoch))
         print('Valid_f1: {}'.format(val_f1))
         print('Valid_iou: {:.4f}'.format(val_iou))
-
-        if val_iou > max_acc:
+        
+        
+        if val_iou > max_miou:
             
             best_checkpoint = {
                 'epoch': epoch,
@@ -164,7 +174,7 @@ if __name__== "__main__":
             
             torch.save(best_checkpoint, path)
             
-            max_acc = val_iou
+            max_miou = val_iou
             
             not_improved_count = 0
         else:
