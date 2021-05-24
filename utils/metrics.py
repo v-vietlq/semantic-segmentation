@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 class Evaluator(object):
     def __init__(self, num_class):
@@ -53,3 +53,6 @@ class Evaluator(object):
 
     def reset(self):
         self.confusion_matrix = np.zeros((self.num_class,) * 2)
+        
+        
+

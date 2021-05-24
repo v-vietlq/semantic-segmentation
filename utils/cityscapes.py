@@ -61,9 +61,15 @@ class CityScapes(BaseDataset):
             
 def transform_train():
     composed_transforms = transforms.Compose([
-        T.RandomHorizontalFlip(),
         T.RandomResizedCrop((512,1024), scale=(0.25, 2.)),
-        T.RandomGaussianBlur(),
+        T.RandomHorizontalFlip(),
+        # T.RandomGaussianBlur(),
+        T.ColorJitter(
+          brightness= 0.4,
+          contrast=0.4,
+          saturation= 0.4,
+          hue= 0.5
+        ),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -74,7 +80,6 @@ def transform_train():
 
 def transform_val():
     compose_transforms = transforms.Compose([
-        # T.FixedResize((512,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -85,7 +90,6 @@ def transform_val():
     
 def transform_test():
     compose_transforms = transforms.Compose([
-        # T.FixedResize((512,1024)),
         T.Normalize(
             mean=(0.485, 0.456, 0.406), 
             std=(0.229, 0.224, 0.225)
@@ -131,7 +135,7 @@ if __name__ == '__main__':
     
     
     
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=2,mode='val')
+    dl = get_data_loader(datapth='cityscapes',annpath='cityscapes/train.txt',batch_size=2,mode='train')
     img , gt = dl.dataset.__getitem__(499)
 
     print(img.shape, gt.shape)

@@ -28,19 +28,13 @@ class MscEvalV0(object):
             probs = torch.zeros((N, n_classes, H, W), dtype= torch.float32).cuda().detach()
             
             for scale in self.scales:
-                sH, sW = int(scale* H), int (scale *W)
-                im_sc = F.interpolate(imgs, size=(sH, sW), mode='bilinear', align_corners=True)
+                im_sc = F.interpolate(imgs, size=(512, 1024), mode='bilinear', align_corners=True)
                 im_sc = im_sc.cuda()
                 logits = net(im_sc)[0]
                 logits = F.interpolate(logits, size=size, mode='bilinear', align_corners=True)
                 probs += torch.softmax(logits, dim=1)
-                if self.flip:
-                    im_sc = torch.flip(im_sc, dims=(3, ))
-                    logits = net(im_sc)[0]
-                    logits = torch.flip(im_sc, dim=(3,))
-                    logits = F.interpolate(logits, size=size, mode='bilinear', align_corners=True)
-                    probs += torch.softmax(logits, dim=1)
-                    
+                
+                
             preds = torch.argmax(probs, dim=1)
             keep = label !=self.ignore_lb
             hist +=torch.bincount(label[keep]*n_classes + preds[keep], minlength= n_classes**2).view(n_classes, n_classes)

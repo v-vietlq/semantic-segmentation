@@ -7,9 +7,10 @@ from models.bisenetv2 import BiSeNetV2
 import numpy as np
 import torch.distributed as dist
 
-from torch.optim.lr_scheduler import ExponentialLR
+from utils.lr_scheduler import WarmupPolyLrScheduler
 
 from train import validate_model
+from train import get_check_point
 
 
 torch.backends.cudnn.enabled = True
@@ -22,33 +23,6 @@ if torch.cuda.is_available():
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
-    checkpoint = torch.load(pretrained_pth, map_location=device)
-    
-    model_state_dict = checkpoint['model_state_dict']
-    
-    optimizer_state_dict = checkpoint['optimizer_state_dict']
-    
-    epoch = checkpoint['epoch']
-    
-    max_miou = checkpoint['max_miou']
-    
-    net.load_state_dict(model_state_dict)
-    net.to(device)
-    
-    optimizer.load_state_dict(optimizer_state_dict)
-    
-    scheduler = checkpoint['scheduler']
-
-    is_dist = dist.is_initialized()
-    if is_dist:
-        local_rank = dist.get_rank()
-        net = nn.parallel.DistributedDataParallel(
-            net,
-            device_ids=[local_rank, ],
-            output_device=local_rank
-        )
-    return net, optimizer, scheduler, epoch, max_miou
 
 
 if __name__== "__main__":
@@ -57,17 +31,27 @@ if __name__== "__main__":
     import torchvision.transforms as T
     from PIL import Image
 
-    dl = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=2,mode='val')
+    dl = get_data_loader(datapth='cityscapes',annpath='cityscapes/val.txt',batch_size=8,mode='val')
     
    
     net = BiSeNetV2(19)
     
     optimizer = torch.optim.Adam(net.parameters(),5e-4,(0.9, 0.999), eps=1e-08, weight_decay=5e-4)
-    scheduler = ExponentialLR(optimizer, gamma=0.9)
-    
-    net.load_state_dict(torch.load('model_final_v2.pth'))
-    net.cuda()
 
+    lr_schdr = WarmupPolyLrScheduler(optimizer, power=0.9,
+    max_iter=150000, warmup_iter=1000,
+    warmup_ratio=0.1, warmup='exp', last_epoch=-1,)
+    
+    
+    
+    net, optimizer,lr_schdr,epoch, max_miou = get_check_point(
+        './pretrained_models/BiSeNetv2_epoch_343_acc_0.5937.pt',
+        net,
+        optimizer,
+        lr_schdr,
+        device
+    )
+    
     is_dist = dist.is_initialized()
     if is_dist:
         local_rank = dist.get_rank()

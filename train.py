@@ -1,6 +1,8 @@
+
 import torch 
 import torch.nn as nn
 import numpy as np
+from torch.optim import lr_scheduler
 from utils.cityscapes import get_data_loader
 from utils.meters import TimeMeter, AvgMeter
 from utils.loss import OhemCELoss
@@ -10,16 +12,18 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from utils.cityscapes import get_data_loader
 from utils.evaluate import eval_model
-import torch
+import segmentation_models_pytorch as smp
 from models.bisenetv2 import BiSeNetV2
 import numpy as np
 import torch.distributed as dist
-
-from torch.optim.lr_scheduler import ExponentialLR
+from utils.lr_scheduler import WarmupPolyLrScheduler
+from torch.utils.tensorboard.writer import SummaryWriter
 
 
     
 def train_per_epoch(model, criterion, optimizer, scheduler, dataloader, device):
+    
+    # total_iter = len(dataloader) * dataloader.batch_size * epoch
     
     model.train()
     
@@ -27,7 +31,7 @@ def train_per_epoch(model, criterion, optimizer, scheduler, dataloader, device):
     criteria_aux = [criterion for _ in range(4)]
     
     
-    for _, (image, target) in tqdm(enumerate(dataloader)):
+    for it, (image, target) in tqdm(enumerate(dataloader)):
         image , target = image.to(device, dtype=torch.float), target.to(device)
         target = torch.squeeze(target, 1)
         logits, *logits_aux = model(image)
@@ -36,8 +40,16 @@ def train_per_epoch(model, criterion, optimizer, scheduler, dataloader, device):
         loss = loss_pre + sum(loss_aux)
         optimizer.zero_grad()
         loss.backward()
+        
         optimizer.step()
-    scheduler.step()
+        
+        torch.cuda.synchronize()
+        
+        scheduler.step()
+        
+        # total_iter += dataloader.batch_size
+        
+        
     print(optimizer.param_groups[0]['lr'])
     
     return 
@@ -47,7 +59,8 @@ def validate_model(model, valid_loader, device):
 
     model.eval()
     evaluator = Evaluator(19)
-    for _,(image, target) in enumerate(valid_loader):
+    evaluator.reset()
+    for _,(image, target) in enumerate(tqdm(valid_loader)):
         
         # 2.1. Get images and groundtruths (i.e. a batch), then send them to 
         # the device every iteration
@@ -69,9 +82,9 @@ def validate_model(model, valid_loader, device):
         seg_map = seg_map.cpu().detach().numpy()
         target      = target.cpu().detach().numpy()
         evaluator.add_batch(target,seg_map)
-        Acc = evaluator.Pixel_Accuracy()
-        mIoU = evaluator.Mean_Intersection_over_Union()
-        f1 = evaluator.F1_score()
+    Acc = evaluator.Pixel_Accuracy()
+    mIoU = evaluator.Mean_Intersection_over_Union()
+    f1 = evaluator.F1_score()
                 
     return mIoU, Acc, f1
 
@@ -94,7 +107,7 @@ def get_check_point(pretrained_pth, net, optimizer,scheduler, device):
     
     optimizer.load_state_dict(optimizer_state_dict)
     
-    scheduler = checkpoint['scheduler']
+    scheduler.load_state_dict(checkpoint['scheduler'])
 
     is_dist = dist.is_initialized()
     if is_dist:
@@ -112,6 +125,7 @@ if __name__== "__main__":
     import torchvision.transforms as T
     import torch
     import matplotlib.pyplot as plt
+    from torch.utils.tensorboard.writer import SummaryWriter
     
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
@@ -124,33 +138,41 @@ if __name__== "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
 
-    num_epochs = 200
+    num_epochs = 1000
     max_acc = 0
-    patience = 30
+    patience = 100
     not_improved_count = 0
-    batch_size = 2
+    batch_size = 8
     
-    val_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/val.txt',batch_size=batch_size,mode='val')
-    train_loader = get_data_loader(datapth='data/cityscapes',annpath='data/cityscapes/train.txt',batch_size=batch_size,mode='train')
+    
+    val_loader = get_data_loader(datapth='cityscapes',annpath='cityscapes/val.txt',batch_size=batch_size,mode='val')
+    train_loader = get_data_loader(datapth='cityscapes',annpath='cityscapes/train.txt',batch_size=batch_size,mode='train')
     
     net = BiSeNetV2(n_classes= 19).to(device)
     
     criterion = OhemCELoss(thresh=0.7)
     
-    optimizer = torch.optim.SGD(net.parameters(),lr = 5e-2,momentum=0.9)
-    scheduler = ExponentialLR(optimizer, gamma=0.9)
+    optimizer = torch.optim.SGD(net.parameters(),lr = 1e-2,momentum=0.9)
+
+    lr_schdr = WarmupPolyLrScheduler(optimizer, power=0.9,
+    max_iter=150000, warmup_iter=1000,
+    warmup_ratio=0.1, warmup='exp', last_epoch=-1,)
     
-    net, optimizer, scheduler, epoch, max_miou = get_check_point(
-        './pretrained_models/BiSeNetv2_epoch_14_acc_0.3202.pt',
+    
+    
+    net, optimizer,lr_scheduler,epoch, max_miou = get_check_point(
+        './pretrained_models/BiSeNetv2_epoch_371_acc_0.5997.pt',
         net,
         optimizer,
-        scheduler,
+        lr_schdr,
         device
     )
     
+    
+    writer = SummaryWriter('experiment')
 
     for epoch in range(epoch+1, num_epochs):
-        train_per_epoch(net, criterion, optimizer, scheduler, train_loader, device)
+        train_per_epoch(net, criterion, optimizer, lr_schdr, train_loader, device)
         # val_iou= eval_model(net, val_loader)
         val_iou, val_f1, val_acc = validate_model(net, val_loader, device)
 
@@ -158,15 +180,17 @@ if __name__== "__main__":
         print('Valid_f1: {}'.format(val_f1))
         print('Valid_iou: {:.4f}'.format(val_iou))
         
+        writer.add_scalar("mIoU", val_iou, epoch)
+        writer.add_scalar("mDice",val_f1,epoch)
         
         if val_iou > max_miou:
             
             best_checkpoint = {
                 'epoch': epoch,
-                'model_state_dict': net.state_dict(),
+                'model_state_dict': net.module.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'max_miou': val_iou,
-                'scheduler': scheduler
+                'scheduler': lr_schdr.state_dict()
             }
             
             path = './pretrained_models/BiSeNetv2_epoch_' + str(epoch) + '_acc_{0:.4f}'.format(val_iou)+'.pt'
@@ -182,6 +206,8 @@ if __name__== "__main__":
         
         if not_improved_count >=patience:
             break
+        
+    writer.close()
 
     
 
